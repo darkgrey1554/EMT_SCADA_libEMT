@@ -1,2 +1,16 @@
 ﻿  EmtToSCADA.cpp
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(708,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(731,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(734,27): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(782,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(805,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(808,27): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(898,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(850,10): warning C4101: number: неиспользованная локальная переменная
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(969,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(921,10): warning C4101: number: неиспользованная локальная переменная
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(1010,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(1018,31): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(1104,23): warning C4018: <: несоответствие типов со знаком и без знака
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\EmtToSCADA.cpp(1112,31): warning C4018: <: несоответствие типов со знаком и без знака
   DDL_EMT_SCADA.vcxproj -> D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\Debug\DDL_EMT_SCADA.dll

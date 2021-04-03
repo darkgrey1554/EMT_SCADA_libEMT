@@ -1,4 +1,5 @@
-﻿#include "pch.h" 
+﻿
+#include "pch.h" 
 #include <iostream>
 #include "EmtToSCADA.h"
 
@@ -522,6 +523,755 @@ int Gate_EMT_SCADA::GetStatusMemory()
 2 - ошибка отображения памяти
 
 */
+
+unsigned int Gate_EMT_SCADA::UpdateListChannels()
+{
+    HANDLE memory;
+    InfoChannels* buf;
+    int result = 0;
+    if (MutexMemoryInfoChannels == NULL)
+    {
+        MutexMemoryInfoChannels = CreateMutexA(&security->getsecurityattrebut(), FALSE, NameMutMemoryInfoChannels);
+        if (MutexMemoryInfoChannels == NULL)
+        {
+            last_system_error = GetLastError();
+            result |= 1;
+            return result;
+        }
+    }
+
+    memory = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, NameMemoryInfoChannels);
+    if (memory == NULL)
+    {
+        last_system_error = GetLastError();
+        result |= 2;
+        return result;
+    }
+
+    buf = (InfoChannels*)MapViewOfFile(memory, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(InfoChannels) * num_channels);
+    if (buf == NULL)
+    {
+        last_system_error = GetLastError();
+        CloseHandle(memory);
+        result |= 4;
+        return result;
+    }
+
+    WaitForSingleObject(MutexMemoryInfoChannels, INFINITE);
+
+    VectChannels.clear();
+    for (int i = 0; i < num_channels; i++)
+    {
+        VectChannels.push_back(*(buf + i));
+    }
+
+    UnmapViewOfFile(buf);
+    CloseHandle(memory);
+
+    ReleaseMutex(MutexMemoryInfoChannels);
+
+    return result;
+}
+
+/// --- функция обновления листа KKS IN --- ///
+/*
+0 - ошибка инициализации мьютекса
+1 - ошибка открытия памяти
+2 - ошибка отображения памяти
+*/
+unsigned int Gate_EMT_SCADA::UpdateListKKSInMem()
+{
+    int result = 0;
+    HANDLE memory;
+    KKSDTS* buf;
+
+    if (MutexUpdateListKKSInMem == NULL)
+    {
+        MutexUpdateListKKSInMem = CreateMutexA(&security->getsecurityattrebut(), FALSE, NameMutKKSInPut);
+        if (MutexUpdateListKKSInMem == NULL)
+        {
+            last_system_error = GetLastError();
+            result |= 1;
+            return result;
+        }
+    }
+
+    memory = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, NameMemoryKKSInPut);
+    if (memory == NULL)
+    {
+        last_system_error = GetLastError();
+        result |= 2;
+        return result;
+    }
+
+    buf = (KKSDTS*)MapViewOfFile(memory, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(KKSDTS) * num_KKSIn);
+    if (buf == NULL)
+    {
+        last_system_error = GetLastError();
+        CloseHandle(memory);
+        result |= 4;
+        return result;
+    }
+
+    WaitForSingleObject(MutexUpdateListKKSInMem, INFINITE);
+
+    VectKKSInМem.clear();
+    for (int i = 0; i < num_KKSIn; i++)
+    {
+        VectKKSInМem.push_back(*(buf + i));
+    }
+
+    ReleaseMutex(MutexUpdateListKKSInMem);
+
+    UnmapViewOfFile(buf);
+    CloseHandle(memory);
+
+    return result;
+}
+
+
+/// --- функция обновления листа KKS OUT--- ///
+/*
+0 - ошибка инициализации мьютекса
+1 - ошибка открытия памяти
+2 - ошибка отображения памяти
+*/
+unsigned int Gate_EMT_SCADA::UpdateListKKSOutMem()
+{
+    int result = 0;
+    HANDLE memory;
+    KKSDTS* buf;
+
+    if (MutexUpdateListKKSOutMem == NULL)
+    {
+        MutexUpdateListKKSOutMem = CreateMutexA(&security->getsecurityattrebut(), FALSE, NameMutKKSOutPut);
+        if (MutexUpdateListKKSOutMem == NULL)
+        {
+            last_system_error = GetLastError();
+            result |= 1;
+            return result;
+        }
+    }
+
+    memory = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, NameMemoryKKSOutPut);
+    if (memory == NULL)
+    {
+        last_system_error = GetLastError();
+        result |= 2;
+        return result;
+    }
+
+    buf = (KKSDTS*)MapViewOfFile(memory, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(KKSDTS) * num_KKSOut);
+    if (buf == NULL)
+    {
+        last_system_error = GetLastError();
+        CloseHandle(memory);
+        result |= 4;
+        return result;
+    }
+
+    WaitForSingleObject(MutexUpdateListKKSOutMem, INFINITE);
+
+    VectKKSOutМem.clear();
+    for (int i = 0; i < num_KKSOut; i++)
+    {
+        VectKKSOutМem.push_back(*(buf + i));
+    }
+
+    ReleaseMutex(MutexUpdateListKKSOutMem);
+
+    UnmapViewOfFile(buf);
+    CloseHandle(memory);
+
+    return result;
+}
+
+
+/// --- обновдения таблицы соотношения данных EMT DTS --- /// тут бы оптимизировать процесс
+/*
+0 - вектор KKS IN EMT пуст
+1 - вектор KKS IN DTS пуст
+
+*/
+
+unsigned int Gate_EMT_SCADA::UpdateTabConcordKKSIn()
+{
+    unsigned int  result = 0;
+    unsigned int count = 0;
+    char flag_write = 0;
+    if (VectKKSIn.size() == 0) { result |= 1; return result; }
+    if (VectKKSInМem.size() == 0) { result |= 2; return result; }
+    KKSConcord_RAEK unit;
+
+    TabConcordKKSIn.clear();
+
+    for (int i = 0; i < VectKKSInМem.size(); i++)
+    {
+        unit.channel = VectKKSInМem[i].channel;
+        unit.type = VectKKSInМem[i].typedata;
+        unit.indexdts = VectKKSInМem[i].indexdts;
+        for (int j = 0; j < 10; j++)
+        {
+            unit.KKS[j] = VectKKSInМem[i].KKS[j];
+        }
+        unit.indexraek = -1;
+
+        TabConcordKKSIn.push_back(unit);
+    }
+
+    unit.channel = -1;
+    unit.type = TypeData::Empty;
+    unit.indexdts = -1;
+    for (int j = 0; j < 10; j++)
+    {
+        unit.KKS[j] = 0;
+    }
+    unit.indexraek = -1;
+
+    for (int i = 0; i < VectKKSIn.size(); i++)
+    {
+        flag_write = 0;
+        for (int j = 0; j < TabConcordKKSIn.size(); j++)
+        {
+            count = 0;
+            if (TabConcordKKSIn[j].channel < 0) break;
+            for (int x = 0; x < 10; x++)
+            {
+                if (VectKKSIn[i].KKS[x] == TabConcordKKSIn[j].KKS[x]) { count++; continue; }
+                break;
+            }
+            if (count != 10) continue;
+
+            TabConcordKKSIn[j].indexraek = VectKKSIn[i].index;
+            flag_write = 1;
+            break;
+        }
+
+        if (flag_write == 1) continue;
+
+        for (int x = 0; x < 10; x++)
+        {
+            unit.KKS[x] = VectKKSIn[i].KKS[x];
+        }
+        unit.indexraek = VectKKSIn[i].index;
+
+        TabConcordKKSIn.push_back(unit);
+    }
+
+    return result;
+}
+
+/// --- обновдения таблицы соотношения данных REAK DTS --- /// тут бы оптимизировать процесс
+/*
+0 - вектор KKS OUT EMT пуст
+1 - вектор KKS OUT DTS пуст
+
+*/
+
+unsigned int Gate_EMT_SCADA::UpdateTabConcordKKSOut()
+{
+    unsigned int  result = 0;
+    unsigned int count = 0;
+    char flag_write = 0;
+    if (VectKKSOut.size() == 0) { result |= 1; return result; }
+    if (VectKKSOutМem.size() == 0) { result |= 2; return result; }
+    KKSConcord_RAEK unit;
+
+    TabConcordKKSOut.clear();
+
+    for (int i = 0; i < VectKKSOutМem.size(); i++)
+    {
+        unit.channel = VectKKSOutМem[i].channel;
+        unit.type = VectKKSOutМem[i].typedata;
+        unit.indexdts = VectKKSOutМem[i].indexdts;
+        for (int j = 0; j < 10; j++)
+        {
+            unit.KKS[j] = VectKKSOutМem[i].KKS[j];
+        }
+        unit.indexraek = -1;
+
+        TabConcordKKSOut.push_back(unit);
+    }
+
+    unit.channel = -1;
+    unit.type = TypeData::Empty;
+    unit.indexdts = -1;
+    for (int j = 0; j < 10; j++)
+    {
+        unit.KKS[j] = 0;
+    }
+    unit.indexraek = -1;
+
+    for (int i = 0; i < VectKKSOut.size(); i++)
+    {
+        flag_write = 0;
+        for (int j = 0; j < TabConcordKKSOut.size(); j++)
+        {
+            count = 0;
+            if (TabConcordKKSOut[j].channel < 0) break;
+            for (int x = 0; x < 10; x++)
+            {
+                if (VectKKSOut[i].KKS[x] == TabConcordKKSOut[j].KKS[x]) { count++; continue; }
+                break;
+            }
+            if (count != 10) continue;
+
+            TabConcordKKSOut[j].indexraek = VectKKSOut[i].index;
+            flag_write = 1;
+            break;
+        }
+
+        if (flag_write == 1) continue;
+
+        for (int x = 0; x < 10; x++)
+        {
+            unit.KKS[x] = VectKKSOut[i].KKS[x];
+        }
+        unit.indexraek = VectKKSOut[i].index;
+
+        TabConcordKKSOut.push_back(unit);
+    }
+
+    return result;
+}
+
+
+/// --- функция записи таблицы KKS IN в общую память для визора --- ///
+/*
+ 0 - нулевой размер таблицы
+ 1 - ошибка инициализации мьютекса
+ 2 - ошибка инициализации памяти
+ 3 - ошибка отображения памяти
+
+*/
+unsigned int Gate_EMT_SCADA::UpdateMemoryTabConcordIn()
+{
+    unsigned int result = 0;
+    int* number;
+    char* buf;
+
+    if (TabConcordKKSIn.size() == 0)
+    {
+        result |= 1;
+        return result;
+    }
+
+    if (MutexConcordKKSIn == NULL)
+    {
+        MutexConcordKKSIn = CreateMutexA(&security->getsecurityattrebut(), FALSE, NameMutexConcordKKSIn);
+        if (MutexConcordKKSIn == NULL)
+        {
+            last_system_error = GetLastError();
+            result |= 2;
+            return result;
+        }
+    }
+
+    WaitForSingleObject(MutexConcordKKSIn, INFINITE);
+
+    if (MemoryConcordKKSIn != NULL)
+    {
+        CloseHandle(MemoryConcordKKSIn);
+        MemoryConcordKKSIn = NULL;
+    }
+
+    MemoryConcordKKSIn = CreateFileMappingA(INVALID_HANDLE_VALUE, &security->getsecurityattrebut(), PAGE_READWRITE, 0, 4 + sizeof(KKSConcord_RAEK) * TabConcordKKSIn.size(), NameMemoryConcordKKSIn);
+    if (MemoryConcordKKSIn == NULL)
+    {
+        last_system_error = GetLastError();
+        ReleaseMutex(MutexConcordKKSIn);
+        result |= 4;
+        return result;
+    }
+
+    buf = (char*)MapViewOfFile(MemoryConcordKKSIn, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if (buf == NULL)
+    {
+        last_system_error = GetLastError();
+        ReleaseMutex(MutexConcordKKSIn);
+        result |= 8;
+        return result;
+    }
+
+    *(int*)buf = TabConcordKKSIn.size();
+
+    for (int i = 0; i < TabConcordKKSIn.size(); i++)
+    {
+        *(KKSConcord_RAEK*)(buf + 4 + sizeof(KKSConcord_RAEK) * i) = TabConcordKKSIn[i];
+    }
+    UnmapViewOfFile(buf);
+
+    ReleaseMutex(MutexConcordKKSIn);
+
+    return result;
+}
+
+
+/// --- функция записи таблицы KKS OUT в общую память для визора --- ///
+/*
+ 0 - нулевой размер таблицы
+ 1 - ошибка инициализации мьютекса
+ 2 - ошибка инициализации памяти
+ 3 - ошибка отображения памяти
+
+*/
+unsigned int Gate_EMT_SCADA::UpdateMemoryTabConcordOut()
+{
+    unsigned int result = 0;
+    int* number;
+    char* buf;
+
+    if (TabConcordKKSOut.size() == 0)
+    {
+        result |= 1;
+        return result;
+    }
+
+    if (MutexConcordKKSOut == NULL)
+    {
+        MutexConcordKKSOut = CreateMutexA(&security->getsecurityattrebut(), FALSE, NameMutexConcordKKSOut);
+        if (MutexConcordKKSOut == NULL)
+        {
+            last_system_error = GetLastError();
+            result |= 2;
+            return result;
+        }
+    }
+
+    WaitForSingleObject(MutexConcordKKSOut, INFINITE);
+
+    if (MemoryConcordKKSOut != NULL)
+    {
+        CloseHandle(MemoryConcordKKSOut);
+        MemoryConcordKKSOut = NULL;
+    }
+
+    MemoryConcordKKSOut = CreateFileMappingA(INVALID_HANDLE_VALUE, &security->getsecurityattrebut(), PAGE_READWRITE, 0, 4 + sizeof(KKSConcord_RAEK) * TabConcordKKSOut.size(), NameMemoryConcordKKSOut);
+    if (MemoryConcordKKSOut == NULL)
+    {
+        last_system_error = GetLastError();
+        ReleaseMutex(MutexConcordKKSOut);
+        result |= 4;
+        return result;
+    }
+
+    buf = (char*)MapViewOfFile(MemoryConcordKKSOut, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if (buf == NULL)
+    {
+        last_system_error = GetLastError();
+        ReleaseMutex(MutexConcordKKSOut);
+        result |= 8;
+        return result;
+    }
+
+    *(int*)buf = TabConcordKKSOut.size();
+
+    for (int i = 0; i < TabConcordKKSOut.size(); i++)
+    {
+        *(KKSConcord_RAEK*)(buf + 4 + sizeof(KKSConcord_RAEK) * i) = TabConcordKKSOut[i];
+    }
+    UnmapViewOfFile(buf);
+
+    ReleaseMutex(MutexConcordKKSOut);
+
+    return result;
+}
+
+
+/// --- функция записи аналоговых данных --- ///
+/*
+0 - таблица соглалования KKS пуста
+1 - присуствует ошибра открытия памяти
+2 - присуствует ошибка отображения
+3 - индекс выходит за границы входного буфера
+4 - индекс выходин за границы буфера общей памяти
+*/
+
+
+unsigned int Gate_EMT_SCADA::WriteData(TypeData TP, void* buf, int size_buf)
+{
+    unsigned int result = 0;
+    HANDLE memory = NULL;
+    //TypeData td = TypeData::Analog;
+    int current_channel = -1;
+    char* buf_dts = NULL;
+    char flag_write = 0;
+    int size_type = 0;
+
+    result = CheckStatusSharedMemory();
+
+    if (TabConcordKKSOut.size() == 0) { result |= (1 << 22); return result; }
+    int size_data_channel = 0;
+
+    if (TP == TypeData::Analog) size_type = sizeof(float);
+    if (TP == TypeData::Discrete) size_type = sizeof(int);
+    if (TP == TypeData::Binar) size_type = sizeof(char);
+
+    for (int i = 0; i < TabConcordKKSOut.size(); i++)
+    {
+        if (current_channel != TabConcordKKSOut[i].channel)
+        {
+            if (TabConcordKKSOut[i].channel < 0) break;
+            current_channel = TabConcordKKSOut[i].channel;
+            size_data_channel = 0;
+
+            for (int j = 0; j < VectChannels.size(); j++)
+            {
+                if (VectChannels[j].channel == current_channel) { size_data_channel = VectChannels[j].countAout; break; }
+            }
+            if (size_data_channel <= 0) continue;
+
+            if (buf_dts != NULL) { UnmapViewOfFile(buf_dts); buf_dts = NULL; }
+            if (memory != NULL) { CloseHandle(memory); memory = NULL; }
+
+            memory = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, CreateNameMemory(TP, TypeValue::OUTPUT, current_channel).c_str());
+            if (memory == NULL) { result |= (1 << 23); flag_write = 0; last_system_error = GetLastError(); continue; }
+            buf_dts = (char*)MapViewOfFile(memory, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+            if (buf_dts == NULL) { CloseHandle(memory); memory = NULL; flag_write = 0; result |= (1 << 24); last_system_error = GetLastError(); continue; }
+            flag_write = 1;
+        }
+
+        if (flag_write == 1 && TabConcordKKSOut[i].type == TP)
+        {
+            if (TabConcordKKSOut[i].indexraek >= size_buf) { result |= (1 << 25); continue; }
+            if (TabConcordKKSOut[i].indexdts >= size_data_channel) { result |= (1 << 26); continue; }
+
+            for (int j = 0; j < size_type; j++)
+            {
+                *(char*)(buf_dts + size_type * TabConcordKKSOut[i].indexdts + j) = *(((char*)buf) + TabConcordKKSOut[i].indexraek * size_type + j);
+            }
+            //*(float*)(buf_dts + size_type * TabConcordKKSOut[i].indexdts) = *(((float*)buf) + TabConcordKKSOut[i].indexraek);
+        }
+    }
+
+    if (buf_dts != NULL) { UnmapViewOfFile(buf_dts); buf_dts = NULL; }
+    if (memory != NULL) { CloseHandle(memory); memory = NULL; }
+
+    return result;
+}
+
+// --- проверк/обновления данных --- ///
+/*
+0 - ошибка GetStatusMemory инициализации мьютекса
+1 - ошибка GetStatusMemory инициализации памяти
+2 - ошибка GetStatusMemory отображения памяти
+3 - ошибка UpdateListChannels инициализации мьютекса
+4 - ошибка UpdateListChannels открытия памяти
+5 - ошибка UpdateListChannels отображения памяти
+6 - ошибка UpdateListKKSMemIn инициализации мьютекса
+7 - ошибка UpdateListKKSMemIn открытия памяти
+8 - ошибка UpdateListKKSMemIn отображения памяти
+9 - ошибка UpdateListKKSMemOut инициализации мьютекса
+10 - ошибка UpdateListKKSMemOut открытия памяти
+11 - ошибка UpdateListKKSMemOut отображения памяти
+12 - ошибка UpdateTabConcordKKSIn вектор KKS EMT пуст
+13 - ошибка UpdateTabConcordKKSIn вектор KKS DTS пуст
+14 - ошибка UpdateTabConcordKKSOut вектор KKS EMT пуст
+15 - ошибка UpdateTabConcordKKSOut вектор KKS DTS пуст
+16 - ошибка UpdateMemoryTabConcordin инициализации мьютекса
+17 - ошибка UpdateMemoryTabConcordin инициализации памяти
+18 - ошибка UpdateMemoryTabConcordin отображения памяти
+19 - ошибка UpdateMemoryTabConcordout инициализации мьютекса
+20 - ошибка UpdateMemoryTabConcordout инициализации памяти
+21 - ошибка UpdateMemoryTabConcordout отображения памяти
+22 - таблица соглалования KKS пуста
+23 - присуствует ошибра открытия памяти
+24 - присуствует ошибка отображения
+25 - индекс выходит за границы входного буфера
+26 - индекс выходин за границы буфера общей памяти
+*/
+
+unsigned int Gate_EMT_SCADA::ReadData(TypeData TP, void* buf, int size_buf)
+{
+    unsigned int result = 0;
+    HANDLE memory = NULL;
+    //TypeData td = TypeData::Analog;
+    int current_channel = -1;
+    char* buf_dts = NULL;
+    char flag_read = 0;
+    int size_type = 0;
+
+    result = CheckStatusSharedMemory();
+
+    if (TabConcordKKSIn.size() == 0) { result |= (1 << 22); return result; }
+    int size_data_channel = 0;
+
+    if (TP == TypeData::Analog) size_type = sizeof(float);
+    if (TP == TypeData::Discrete) size_type = sizeof(int);
+    if (TP == TypeData::Binar) size_type = sizeof(char);
+
+
+    for (int i = 0; i < TabConcordKKSIn.size(); i++)
+    {
+        if (TabConcordKKSIn[i].channel < 0) break;
+        if (current_channel != TabConcordKKSIn[i].channel)
+        {
+            current_channel = TabConcordKKSIn[i].channel;
+            size_data_channel = 0;
+
+            for (int j = 0; j < VectChannels.size(); j++)
+            {
+                if (VectChannels[j].channel == current_channel) { size_data_channel = VectChannels[j].countAin; break; }
+            }
+            if (size_data_channel <= 0) continue;
+
+            if (memory != NULL) { CloseHandle(memory); memory = NULL; }
+            if (buf_dts != NULL) { UnmapViewOfFile(buf_dts); buf_dts = NULL; }
+            memory = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, CreateNameMemory(TP, TypeValue::INPUT, current_channel).c_str());
+            if (memory == NULL) { result |= (1 << 23); flag_read = 0; last_system_error = GetLastError(); continue; }
+            buf_dts = (char*)MapViewOfFile(memory, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+            if (buf_dts == NULL) { CloseHandle(memory); memory = NULL; flag_read = 0; result |= (1 << 24); last_system_error = GetLastError(); continue; }
+            flag_read = 1;
+        }
+
+        if (flag_read == 1 && TabConcordKKSIn[i].type == TP)
+        {
+            if (TabConcordKKSIn[i].indexraek >= size_buf) { result |= (1 << 25); continue; }
+            if (TabConcordKKSIn[i].indexdts >= size_data_channel) { result |= (1 << 26); continue; }
+
+            for (int j = 0; j < size_type; j++)
+            {
+                *(((char*)buf) + TabConcordKKSIn[i].indexraek * size_type + j) = *(char*)(buf_dts + size_type * TabConcordKKSIn[i].indexdts + j);
+            }
+
+        }
+    }
+
+    if (buf_dts != NULL) { UnmapViewOfFile(buf_dts); buf_dts = NULL; }
+    if (memory != NULL) { CloseHandle(memory); memory = NULL; }
+    return result;
+}
+
+
+// --- проверк/обновления данных --- ///
+/*
+0 - ошибка GetStatusMemory инициализации мьютекса
+1 - ошибка GetStatusMemory инициализации памяти
+2 - ошибка GetStatusMemory отображения памяти
+3 - ошибка UpdateListChannels инициализации мьютекса
+4 - ошибка UpdateListChannels открытия памяти
+5 - ошибка UpdateListChannels отображения памяти
+6 - ошибка UpdateListKKSMemIn инициализации мьютекса
+7 - ошибка UpdateListKKSMemIn открытия памяти
+8 - ошибка UpdateListKKSMemIn отображения памяти
+9 - ошибка UpdateListKKSMemOut инициализации мьютекса
+10 - ошибка UpdateListKKSMemOut открытия памяти
+11 - ошибка UpdateListKKSMemOut отображения памяти
+12 - ошибка UpdateTabConcordKKSIn вектор KKS EMT пуст
+13 - ошибка UpdateTabConcordKKSIn KKS IN DTS пуст
+14 - ошибка UpdateTabConcordKKSOut вектор KKS EMT пуст
+15 - ошибка UpdateTabConcordKKSOut KKS IN DTS пуст
+16 - ошибка UpdateMemoryTabConcordin инициализации мьютекса
+17 - ошибка UpdateMemoryTabConcordin инициализации памяти
+18 - ошибка UpdateMemoryTabConcordin отображения памяти
+19 - ошибка UpdateMemoryTabConcordout инициализации мьютекса
+20 - ошибка UpdateMemoryTabConcordout инициализации памяти
+21 - ошибка UpdateMemoryTabConcordout отображения памяти
+22 - таблица соглалования KKS пуста
+23 - присуствует ошибра открытия памяти
+24 - присуствует ошибка отображения
+25 - индекс выходит за границы входного буфера
+26 - индекс выходин за границы буфера общей памяти
+*/
+
+unsigned int Gate_EMT_SCADA::CheckStatusSharedMemory()
+{
+    unsigned int result = 0;
+    unsigned res = 0;
+    int status;
+    for (;;)
+    {
+        status = GetStatusMemory();
+        if (status < 0)
+        {
+            if (status == -1) result |= 1;
+            if (status == -2) result |= 2;
+            if (status == -3) result |= 4;
+            continue;
+        }
+
+        if (status == (int)CommandEmt::UpdateListChannel)
+        {
+            res = UpdateListChannels();  /// 3 бита
+            if (res != 0)
+            {
+                result |= (res << 3);
+            }
+            continue;
+        }
+
+        if (status == (int)CommandEmt::UpdateKKSListIn)
+        {
+            res = UpdateListKKSInMem();
+            if (res != 0)
+            {
+                result |= (res << 6); // 3 бита
+                continue;
+            }
+
+            res = UpdateTabConcordKKSIn();
+            if (res != 0)
+            {
+                result |= (res << 9); //  2 бита
+                continue;
+            }
+
+            res = UpdateMemoryTabConcordIn(); //4бит
+            if (res != 0)
+            {
+                result |= (res << 11); //
+                continue;
+            }
+            continue;
+        }
+
+        if (status == (int)CommandEmt::UpdateKKSListOut)
+        {
+            res = UpdateListKKSOutMem();
+            if (res != 0)
+            {
+                result |= (res << 15); //3бит
+                continue;
+            }
+
+            UpdateTabConcordKKSOut(); //2бит
+            if (res != 0)
+            {
+                result |= (res << 18);
+                continue;
+            }
+
+            UpdateMemoryTabConcordOut();  //2бит
+            if (res != 0)
+            {
+
+                result |= (res << 20);
+                continue;
+            }
+            continue;
+        }
+
+        break;
+    }
+
+    return result;
+}
+
+int Gate_EMT_SCADA::GetError()
+{
+    return result_init;
+}
+
+DWORD Gate_EMT_SCADA::GetSystemError()
+{
+    return last_system_error;
+}
+
+Status_Init Gate_EMT_SCADA::GetStatusInit()
+{
+    return status_init;
+}
+
 Gate_EMT_SCADA* createGate_EMT_SCADA() {
     return new Gate_EMT_SCADA();
 }
