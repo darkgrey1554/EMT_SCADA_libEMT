@@ -1,0 +1,3 @@
+﻿  EmtToSCADA.cpp
+EmtToSCADA.obj : error LNK2019: ссылка на неразрешенный внешний символ "public: __thiscall Gate_EMT_SCADA::Gate_EMT_SCADA(void)" (??0Gate_EMT_SCADA@@QAE@XZ) в функции "class Gate_EMT_SCADA * __cdecl createGate_EMT_SCADA(void)" (?createGate_EMT_SCADA@@YAPAVGate_EMT_SCADA@@XZ).
+D:\CATE_WORK\GATE_EMT_SCADA\DDL_EMT_SCADA\Debug\DDL_EMT_SCADA.dll : fatal error LNK1120: неразрешенных внешних элементов: 1
